@@ -5,15 +5,16 @@ using FrooxEngine;
 
 namespace Serial
 {
-    [Category("LogiX/Test")]
+    [Category("LogiX/IO")]
     [NodeName("Serial")]
     public class Serial : LogixNode
     {
         //Setup inspector interface 
         public readonly Sync<string> ComPort;
+        public readonly Sync<string> Messages;
         public readonly Sync<int> BaudRate;
         public readonly Sync<bool> ComEnabled;
-        private readonly SyncRef<User> Owner;
+        private readonly Sync<string> Owner;
 
         //Setup logix node inputs and outputs
         public readonly Impulse NewData;
@@ -33,7 +34,10 @@ namespace Serial
         public void Run()
         {
             //Check to see if the serial port is open, and send the string on the node input
-            if (_serialPort == null || _serialPort.IsOpen == false) return;
+            if (_serialPort == null || _serialPort.IsOpen == false)
+            {
+                return;
+            }
             _serialPort.Write(StrInput.EvaluateRaw(""));
         }
 
@@ -41,11 +45,13 @@ namespace Serial
         {
             //Setup the default values
             ComEnabled.Value = false;
-            ComPort.Value = "COM1";
+            Messages.Value = "";
+            ComPort.Value = "COM7";
             BaudRate.Value = 9600;
             OutputTemp.Value = "";
+
             //We only want the owner of the node to connect there serial port
-            Owner.Value = World.LocalUser.ReferenceID;
+            Owner.Value = World.LocalUser.MachineID;
         }
 
         protected override void OnEvaluate()
@@ -73,27 +79,48 @@ namespace Serial
         {
             //Pass the callback to the base so the outputs are updated on the node
             base.OnChanges();
+
             //Check if this is the owner of the node
-            if (Owner.Value == World.LocalUser.ReferenceID)
+            if (Owner.Value == World.LocalUser.MachineID)
             {
                 if (ComEnabled.Value != ComEnabled_last)
                 {
                     if (ComEnabled.Value)
                     {
                         //Open the serial port
-                        _serialPort = new SerialPort(ComPort.Value, BaudRate.Value, Parity.None, 8, StopBits.One);
+                        _serialPort = new SerialPort();
+                        _serialPort.PortName = ComPort.Value;
+                        _serialPort.BaudRate = BaudRate.Value;
+                        _serialPort.Parity = Parity.None;
+                        _serialPort.DataBits = 8;
+                        _serialPort.StopBits = StopBits.One;
+                        _serialPort.Handshake = Handshake.None;
+                        if (_serialPort.IsOpen)
+                        {
+                            _serialPort.Close();
+                        }
                         _serialPort.Open();
+                        Messages.Value = "Port: " + _serialPort.PortName + " is open.";
+                        if (_serialPort == null || _serialPort.IsOpen == false)
+                        {
+                            Debug.Log("Serial Port: Did Not Open!");
+                            Messages.Value = "Port: " + _serialPort.PortName + " did not get opened.";
+                        }
                     }
                     else
                     {
-                        _serialPort.Close();
+                        try
+                        {
+                            Messages.Value = "Port: " + _serialPort.PortName + " Closed.";
+                            _serialPort.Close();
+                        }
+                        catch (Exception)
+                        {
+
+                        }
                     }
                     ComEnabled_last = ComEnabled.Value;
                 }
-            }
-            else
-            {
-                ComEnabled.Value = ComEnabled_last;
             }
         }
     }
